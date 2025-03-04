@@ -1,10 +1,22 @@
+import os
+import sys
+
+__dir__ = os.path.dirname(os.path.abspath(__file__))
+sys.path.append(__dir__)
+sys.path.insert(0, os.path.abspath(os.path.join(__dir__, "..")))
+
+
 import torch
 import torchvision.transforms as transforms
 import json
 from torchvision import models
 from PIL import Image
-from utils import TRANSFORMS
+# from utils import TRANSFORMS
 import numpy as np
+TRANSFORMS = transforms.Compose([
+    transforms.Resize((224, 224)),  # Resize to (224, 224)
+    transforms.ToTensor(),          # Convert to PyTorch tensor
+])
 def convert_to_2channel(img):
     # result = 0.2989 * img[:, :, 0] + 0.5870 * img[:, :, 1] + 0.1140 * img[:, :, 2]
     result = 0.2989 * img[0,:, :] + 0.5870 * img[1,:, :] + 0.1140 * img[2,:, :]
@@ -46,3 +58,7 @@ def get_neutral_background(image):
   average_all_corners = np.mean([average_top_left, average_top_right, average_bottom_left, average_bottom_right], axis=0)
   average_all_corners_broadcasted = average_all_corners[np.newaxis, np.newaxis, :]
   return average_all_corners_broadcasted
+
+
+if __name__ == "__main__":
+   print("OK")

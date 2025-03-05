@@ -12,7 +12,6 @@ import torchvision.transforms as transforms
 from PIL import Image
 import numpy as np
 import matplotlib.pyplot as plt
-from metrics import deletion_score_batch
 import shap
 
 
@@ -84,7 +83,7 @@ def get_partial_score_batch(images,model, img_indices=None, class_names=CLASS_NA
     # return img_names_list, softmax_scores_list
     return softmax_scores_list
 
-def get_threshold_batch(val,to_explain, trueImageInd, percentile_area, x_values = None, step_size = 100, neutral_val = 0):
+def get_threshold_batch(val,to_explain, model, trueImageInd, percentile_area, x_values = None, step_size = 100, neutral_val = 0):
 
   if x_values == None:
     step_size_float = 100.0 / step_size
@@ -93,7 +92,7 @@ def get_threshold_batch(val,to_explain, trueImageInd, percentile_area, x_values 
     x_values = np.array(x_values)
   percentile_list = 100 - x_values
 
-  deletion_score_list  = deletion_score_batch(to_explain, trueImageInd, val, percentile_list, neutral_val)
+  deletion_score_list  = deletion_score_batch(to_explain,model, trueImageInd, val, percentile_list, neutral_val)
   y_values = np.array(deletion_score_list)
   area_under_curve = np.trapz(y_values, x_values)
   print("Area under the curve:", area_under_curve)
@@ -107,14 +106,14 @@ def get_threshold_batch(val,to_explain, trueImageInd, percentile_area, x_values 
   print("x-result:", x_results)
   return x_results
 
-def get_weight_batch(total_val, to_explain, trueImageInd, x_threshold, neutral_val):
+def get_weight_batch(total_val, to_explain,model, trueImageInd, x_threshold, neutral_val):
   num_baseline = total_val.shape[0]
   weight_list = []
   for i in range(num_baseline):
     val = np.sum(total_val[i], axis = 0)
-    weight_list.append(deletion_score_batch(to_explain, trueImageInd, val, [100 - x_threshold],neutral_val)[0])
+    weight_list.append(deletion_score_batch(to_explain,model, trueImageInd, val, [100 - x_threshold],neutral_val)[0])
   return weight_list
-def get_point2remove(raw_shap_value,to_explain,trueImageInd, x_values = None, step_size = 100, ratio_score = 0.5, neutral_val = 0):
+def get_point2remove(raw_shap_value,to_explain,model,trueImageInd, x_values = None, step_size = 100, ratio_score = 0.5, neutral_val = 0):
   if x_values == None:
     step_size_float = 50 / step_size
     x_values = np.arange(0, 30, step_size_float)
@@ -122,22 +121,22 @@ def get_point2remove(raw_shap_value,to_explain,trueImageInd, x_values = None, st
     x_values = np.array(x_values)
   percentile_list = 100 - x_values
   # print(percentile_list)
-  deletion_score_list  = deletion_score_batch(to_explain, trueImageInd, raw_shap_value, percentile_list, neutral_val,False)
+  deletion_score_list  = deletion_score_batch(to_explain,model, trueImageInd, raw_shap_value, percentile_list, neutral_val,False)
   # print(deletion_score_list)
-  full_score = deletion_score_batch(to_explain, trueImageInd, raw_shap_value, [100], neutral_val)[0]
+  full_score = deletion_score_batch(to_explain,model, trueImageInd, raw_shap_value, [100], neutral_val)[0]
   for i in range(len(deletion_score_list)):
     if deletion_score_list[i]<=ratio_score*full_score:
 
       return x_values[i]
   return x_values[-1]
 
-def get_auc_deletion(to_explain, trueImageInd, val, x_values = None, neutral_value = 0, image_show = False):
+def get_auc_deletion(to_explain,model, trueImageInd, val, x_values = None, neutral_value = 0, image_show = False):
   if x_values is None:
     x_values = np.arange(0,100)
   raw_deletion_score_list = []
   # for i in range(0,100):
   # raw_deletion_score_list.append(deletion_score_batch(to_explain, trueImageInd, raw_shap_value, [100-i],average_all_corners_broadcasted)[0])
-  raw_deletion_score_list = deletion_score_batch(to_explain, trueImageInd, val, x_values, neutral_value,image_show)
+  raw_deletion_score_list = deletion_score_batch(to_explain,model, trueImageInd, val, x_values, neutral_value,image_show)
   y_values = np.array(raw_deletion_score_list)
   area_under_curve = np.trapz(y_values, x_values)
   return area_under_curve
@@ -179,7 +178,7 @@ def create_mask_from_indices(val, k, sorted_indices = None):
 #   pass
 import numpy as np
 
-def find_d_alpha(to_explain,val,trueImageInd = None, target_ratio=0.5, neutral_val=0, epsilon=0.01, max_iter=100):
+def find_d_alpha(to_explain,val, model,trueImageInd = None, target_ratio=0.5, neutral_val=0, epsilon=0.01, max_iter=100):
     """
     Binary search to find the proportion of pixels to remove so that the model score approaches target_score.
 
@@ -196,7 +195,7 @@ def find_d_alpha(to_explain,val,trueImageInd = None, target_ratio=0.5, neutral_v
     """
     low, high = 0, 100  # Search range in percentage
     iter_count = 0
-    full_score = get_score_from_array(to_explain, trueImageInd)
+    full_score = get_score_from_array(to_explain, model, trueImageInd)
     print(f"Full score: {full_score}")
     target_score = full_score * target_ratio
     score = full_score
@@ -215,7 +214,7 @@ def find_d_alpha(to_explain,val,trueImageInd = None, target_ratio=0.5, neutral_v
         partial_image = np.expand_dims(partial_image, axis=0).astype(np.float32)
 
         print("SP: ", sum(partial_image!=0))
-        score = get_score_from_array(partial_image, trueImageInd)
+        score = get_score_from_array(partial_image,model, trueImageInd)
         # plt.figure(figsize=(5, 5))
         # plt.imshow(partial_image[0])  # Convert (3,224,224) to (224,224,3) for display
         # plt.title(f"Iteration {iter_count} - Removed: {mid:.2f}% - Score: {score:.4f}")
@@ -239,10 +238,10 @@ def find_d_alpha(to_explain,val,trueImageInd = None, target_ratio=0.5, neutral_v
 
 
     return mid, score
-def exact_find_d_alpha(to_explain,val,trueImageInd = None, target_ratio=0.5, neutral_val=0, epsilon=0.005, max_iter=100):
+def exact_find_d_alpha(to_explain,model,val,trueImageInd = None, target_ratio=0.5, neutral_val=0, epsilon=0.005, max_iter=100):
   low, high = 0, val.shape[0]*val.shape[1]
   sorted_indices = get_sorted_indices(val)
-  full_score = get_score_from_array(to_explain, trueImageInd)
+  full_score = get_score_from_array(to_explain,model, trueImageInd)
   print(f"Full score: {full_score}")
   target_score = full_score * target_ratio
   iter_count = 0
@@ -254,7 +253,7 @@ def exact_find_d_alpha(to_explain,val,trueImageInd = None, target_ratio=0.5, neu
     background_mask = 1 - mask
     partial_image = to_explain[0]*background_mask + mask*neutral_val
     partial_image = np.expand_dims(partial_image, axis=0).astype(np.float32)
-    score = get_score_from_array(partial_image, trueImageInd)
+    score = get_score_from_array(partial_image,model, trueImageInd)
 
     # plt.figure(figsize=(5, 5))
     # plt.imshow(partial_image[0])  # Convert (3,224,224) to (224,224,3) for display
@@ -270,3 +269,65 @@ def exact_find_d_alpha(to_explain,val,trueImageInd = None, target_ratio=0.5, neu
     else:
       high = mid   # Increase removal percentage
   return mid,score
+
+def deletion_score_batch(to_explain,model, trueImageInd, val, percentile_list, neutral_val = 0, image_show = False):
+
+
+  batch_partial_images = []
+  for percentile in percentile_list:
+    threshold = np.percentile(val, percentile)
+    mask = val >= threshold
+    mask = np.repeat(mask[:, :, np.newaxis], 3, axis=-1)
+    background_mask = 1 - mask
+    partial_image = to_explain[0]*background_mask + mask*neutral_val
+    partial_image = partial_image.astype(np.float32)
+
+    batch_partial_images.append(partial_image)
+    if image_show:
+      plt.imshow(partial_image)
+      plt.show()
+  return get_partial_score_batch(batch_partial_images,model, trueImageInd)
+
+
+def get_auc_deletion(to_explain,model, trueImageInd, val, x_values = None, neutral_value = 0,image_show = False):
+  if x_values is None:
+    x_values = np.arange(0,101)
+  raw_deletion_score_list = []
+  # for i in range(0,100):
+  # raw_deletion_score_list.append(deletion_score_batch(to_explain, trueImageInd, raw_shap_value, [100-i],average_all_corners_broadcasted)[0])
+  raw_deletion_score_list = deletion_score_batch(to_explain,model, trueImageInd, val, 100 - x_values, neutral_value, image_show)
+  y_values = np.array(raw_deletion_score_list)
+  # print(y_values)
+  # plt.plot(y_values)
+  area_under_curve = np.trapz(y_values, x_values)
+  return area_under_curve
+
+
+def insertion_score_batch(to_explain,model, trueImageInd, val, percentile_list, neutral_val = 0, image_show = False):
+  batch_partial_images = []
+  for percentile in percentile_list:
+    threshold = np.percentile(val, percentile)
+    mask = val >= threshold
+    mask = np.repeat(mask[:, :, np.newaxis], 3, axis=-1)
+    background_mask = 1 - mask
+    partial_image = to_explain[0]*mask + background_mask*neutral_val
+    partial_image = partial_image.astype(np.float32)
+
+    batch_partial_images.append(partial_image)
+    if image_show:
+      plt.imshow(partial_image)
+      plt.show()
+  return get_partial_score_batch(batch_partial_images,model, trueImageInd)
+
+
+def get_auc_insertion(to_explain,model, trueImageInd, val, x_values = None, neutral_value = 0,image_show = False):
+  if x_values is None:
+    x_values = np.arange(0,101)
+  raw_insertion_score_list = []
+  raw_insertion_score_list = insertion_score_batch(to_explain,model, trueImageInd, val, 100 - x_values, neutral_value, image_show)
+  y_values = np.array(raw_insertion_score_list)
+  # print(y_values)
+  # plt.plot(y_values)
+  # print(y_values)x
+  area_under_curve = np.trapz(y_values, x_values)
+  return area_under_curve

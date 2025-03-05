@@ -1,12 +1,17 @@
+
+import os
+import sys
+
+__dir__ = os.path.dirname(os.path.abspath(__file__))
+sys.path.append(__dir__)
+sys.path.insert(0, os.path.abspath(os.path.join(__dir__, "..")))
+
 import torch
 import numpy as np
 import matplotlib.pyplot as plt
-import os
 from PIL import Image
-import json
 import torchvision.transforms as transforms
 from utils import *
-import pickle as pkl
 from scipy.optimize import linear_sum_assignment
 from sklearn.metrics import pairwise_distances
 
